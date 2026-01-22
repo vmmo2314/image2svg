@@ -42,6 +42,10 @@ const DEFAULT_PARAMS: ProcessorParams = {
     fill_holes: false,             // Disabled by default
 };
 
+import { auth } from "./firebase";
+import { onAuthStateChanged, User, signOut } from "firebase/auth";
+import Login from "./components/Login";
+
 export default function Home() {
     const [originalImage, setOriginalImage] = useState<string | null>(null);
     const [vectorSvg, setVectorSvg] = useState<string | null>(null);
@@ -51,6 +55,17 @@ export default function Home() {
     const [selectedPreset, setSelectedPreset] = useState<PresetKey>('clean');
     const [showAdvanced, setShowAdvanced] = useState(false);
     const [isDragging, setIsDragging] = useState(false);
+    const [user, setUser] = useState<User | null>(null);
+    const [authLoading, setAuthLoading] = useState(true);
+
+    // Auth Listener
+    useEffect(() => {
+        const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+            setUser(currentUser);
+            setAuthLoading(false);
+        });
+        return () => unsubscribe();
+    }, []);
 
     // Load presets from API
     useEffect(() => {
@@ -168,8 +183,13 @@ export default function Home() {
                 ? `${process.env.NEXT_PUBLIC_API_URL}/vectorize`
                 : 'http://localhost:7860/vectorize'; // Fallback for local dev
 
+            const token = await user?.getIdToken();
+
             const apiResponse = await fetch(apiUrl, {
                 method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                },
                 body: formData,
             });
 
@@ -227,8 +247,12 @@ export default function Home() {
 
     // ... inside component ...
 
-    // We need to match the backend keys to these local visual definitions
-    // The backend sends 'clean', 'photo', 'laser'.
+    // Prevent hydration mismatch or flash
+    if (authLoading) return <div className="h-screen bg-zinc-950 flex items-center justify-center text-teal-600">Cargando Sistema...</div>;
+
+    if (!user) {
+        return <Login />;
+    }
 
     return (
         <main className="flex flex-col h-screen overflow-hidden bg-zinc-950 text-zinc-300 font-sans">
@@ -249,6 +273,13 @@ export default function Home() {
                 </div>
 
                 <div className="flex items-center gap-4">
+                    <button
+                        onClick={() => signOut(auth)}
+                        className="text-xs font-bold uppercase text-zinc-500 hover:text-red-500 transition-colors mr-2"
+                    >
+                        Salir
+                    </button>
+
                     {originalImage && (
                         <button
                             onClick={handleDownload}
